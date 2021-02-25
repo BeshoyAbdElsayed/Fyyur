@@ -1,8 +1,8 @@
-"""added tables artists, venues, venue_genres, artist_genres and shows
+"""create venues, venue_genres, artists, artist_genres and shows table
 
-Revision ID: df9d06d7ca3f
+Revision ID: 57f11c24fb8f
 Revises: 
-Create Date: 2021-02-25 13:24:10.776551
+Create Date: 2021-02-25 16:13:18.625357
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'df9d06d7ca3f'
+revision = '57f11c24fb8f'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -56,7 +56,7 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('venue_id', sa.Integer(), nullable=False),
     sa.Column('artist_id', sa.Integer(), nullable=False),
-    sa.Column('start_time', sa.Date(), nullable=False),
+    sa.Column('start_time', sa.String(length=120), nullable=False),
     sa.ForeignKeyConstraint(['artist_id'], ['artists.id'], ),
     sa.ForeignKeyConstraint(['venue_id'], ['venues.id'], ),
     sa.PrimaryKeyConstraint('id')
