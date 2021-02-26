@@ -5,7 +5,17 @@
 import json
 import dateutil.parser
 import babel
-from flask import Flask, render_template, request, Response, flash, redirect, url_for, abort, jsonify
+from flask import (
+  Flask, 
+  render_template,
+  request,
+  Response,
+  flash,
+  redirect,
+  url_for,
+  abort, 
+  jsonify
+)
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import load_only
@@ -16,172 +26,31 @@ from flask_wtf import Form
 from forms import *
 import sys
 from datetime import datetime
+from models import (
+  app,
+  db,
+  migrate, 
+  Venue, 
+  Artist, 
+  Show, 
+  VenueGenre, 
+  ArtistGenre
+)
+from helpers import (
+  get_num_past_shows, 
+  get_num_upcoming_shows, 
+  get_past_shows, 
+  get_upcoming_shows
+)
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
 
-app = Flask(__name__)
 moment = Moment(app)
-app.config.from_object('config')
-db = SQLAlchemy(app)
-
 # connect to a local postgresql database
-# migration connection
-migrate = Migrate(app, db)
+app.config.from_object('config')
+db.init_app(app)
 
-#----------------------------------------------------------------------------#
-# Models.
-#----------------------------------------------------------------------------#
-
-class Venue(db.Model):
-    __tablename__ = 'venues'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    city = db.Column(db.String(120), nullable=False)
-    state = db.Column(db.String(120), nullable=False)
-    address = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(120), nullable=False)
-    image_link = db.Column(db.String(500))
-    facebook_link = db.Column(db.String(120))
-    #  implement any missing fields, as a database migration using Flask-Migrate
-    website = db.Column(db.String(120)) 
-    seeking_talent = db.Column(db.Boolean, default=False)
-    seeking_description = db.Column(db.String(500))
-    # Venue Has Many VenueGenres
-    genres = db.relationship('VenueGenre', backref='venues', cascade="all, delete", lazy=True) 
-    # Venue Has Many Shows
-    shows = db.relationship('Show', backref='venue', cascade="all, delete", lazy=True)
-
-    def __repr__(self):
-      return f'<{self.id}, {self.name}>'
-    
-
-class Artist(db.Model):
-    __tablename__ = 'artists'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    city = db.Column(db.String(120), nullable=False)
-    state = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(120), nullable=False)
-    image_link = db.Column(db.String(500))
-    facebook_link = db.Column(db.String(120))
-    #  implement any missing fields, as a database migration using Flask-Migrate
-    website = db.Column(db.String(120))
-    seeking_venue = db.Column(db.Boolean, default=False)
-    seeking_description = db.Column(db.String(500))
-    # Artist Has Many ArtistGenres  
-    genres = db.relationship('ArtistGenre', backref='artists', cascade="all, delete", lazy=True) 
-    # Artist Has Many Shows
-    shows = db.relationship('Show', backref='artist', cascade="all, delete", lazy=True)
-
-    def __repr__(self):
-      return f'<{self.id}, {self.name}>'
-
-
-# creating genres tables to avoid multi values in a single field 
-# and to achieve achieve 3NF 
-# assuming a venue or an artist can has many genres 
-class VenueGenre(db.Model):
-    __tablename__ = 'venue_genres'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    venue_id = db.Column(db.Integer, db.ForeignKey('venues.id'))
-    def __repr__(self):
-      return f'<{self.id}, {self.name}>'
- 
-class ArtistGenre(db.Model):
-    __tablename__ = 'artist_genres'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    artist_id = db.Column(db.Integer, db.ForeignKey('artists.id'))
-    def __repr__(self):
-      return f'<{self.id}, {self.name}>'
-
-# creating shows table
-class Show(db.Model):
-    __tablename__ = 'shows'
-    id = db.Column(db.Integer, primary_key=True)
-    venue_id = db.Column(db.Integer, db.ForeignKey('venues.id'), nullable=False)
-    artist_id = db.Column(db.Integer, db.ForeignKey('artists.id'), nullable=False)
-    start_time = db.Column(db.String(120), nullable=False)
-    def __repr__(self):
-      return f'<{self.id}, artist: {self.artist_id}, venue: {self.  venue_id}>'
-
-
-#----------------------------------------------------------------------------#
-# helper functions.
-#----------------------------------------------------------------------------#
-
-# get the number of upcoming shows 
-# shows: list of shows
-# return: integer of number of upcoming shows
-def get_num_upcoming_shows(shows):
-  num_upcoming_shows = 0
-  for show in shows:
-    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
-    now = datetime.now()
-    # checking if start_time is in the future or not
-    if start_time > now:
-      num_upcoming_shows += 1
-  return num_upcoming_shows
-
-# get the number of past shows 
-# shows: list of shows
-# return: integer of number of past shows
-def get_num_past_shows(shows):
-  num_past_shows = 0
-  for show in shows:
-    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
-    now = datetime.now()
-    # checking if start_time is in the past or not
-    if start_time < now:
-      num_past_shows += 1
-  return num_past_shows
-
-# get the upcoming shows 
-# shows: list of shows
-# return: list of upcoming shows
-def get_upcoming_shows(shows):
-  upcoming_shows = []
-  for show in shows:
-    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
-    now = datetime.now()
-    # checking if start_time is in the future or not
-    if start_time > now:
-      upcoming_shows.append({
-        "show_id": show.id,
-        "venue_id": show.venue.id,
-        "venue_name": show.venue.name,
-        "venue_image_link": show.venue.image_link,
-        "artist_id": show.artist.id,
-        "artist_name": show.artist.name,
-        "artist_image_link": show.artist.image_link,
-        "start_time": show.start_time
-      })
-  return upcoming_shows
-
-# get the past shows 
-# shows: list of shows
-# return: list of past shows
-def get_past_shows(shows):
-  past_shows = []
-  for show in shows:
-    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
-    now = datetime.now()
-    # checking if start_time is in the past or not
-    if start_time < now:
-      past_shows.append({
-        "show_id": show.id,
-        "venue_id": show.venue.id,
-        "venue_name": show.venue.name,
-        "venue_image_link": show.venue.image_link,
-        "artist_id": show.artist.id,
-        "artist_name": show.artist.name,
-        "artist_image_link": show.artist.image_link,
-        "start_time": show.start_time
-      })
-  return past_shows
 #----------------------------------------------------------------------------#
 # Filters.
 #----------------------------------------------------------------------------#
@@ -203,6 +72,21 @@ app.jinja_env.filters['datetime'] = format_datetime
 @app.route('/')
 def index():
   return render_template('pages/home.html')
+
+
+
+@app.route('/test')
+def test():
+  form = MyForm()
+  return render_template('forms/test.html', form=form)
+
+@app.route('/test', methods=['POST'])
+def test_post():
+  form = MyForm()
+  if form.validate_on_submit():
+      return 'success'
+  return 'failed'
+  
 
 
 #  Venues
@@ -416,12 +300,17 @@ def create_venue_form():
 
 @app.route('/venues/create', methods=['POST'])
 def create_venue_submission():
-  #  insert form data as a new Venue record in the db, instead
+  # insert form data as a new Venue record in the db, instead
+  data = request.form
+  form = VenueForm()
+  
+  # validate input data
+  if not form.validate_on_submit():
+    flash('invalid input fields')
+    return redirect(url_for('index'))
+
   error = False
   try:
-    data = request.form
-    # adding all the data fields even though its not provided in the forntend
-    # incase data added in the future
     venue = Venue(
       name = data['name'],
       city = data['city'],
@@ -429,13 +318,15 @@ def create_venue_submission():
       address = data['address'],
       phone = data['phone'],
       facebook_link = data['facebook_link'],
-      image_link = data['image_link'] if 'image_link' in data.keys() else '',
-      website = data['website'] if 'website' in data.keys() else '',
-      seeking_talent = data['seeking_talent'] if 'seeking_talent' in data.keys() else False,
-      seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else ''
+      image_link = data['image_link'],
+      website = data['website'],
+      seeking_talent = True if 'seeking_talent' in data.keys() else False,
+      seeking_description = data['seeking_description']
     )
-    genre = VenueGenre(name = data['genres'])
-    venue.genres = [genre]
+    # insert multiple genres
+    for genre_name in form.genres.data:
+      genre = VenueGenre(name = genre_name)
+      venue.genres.append(genre)
     db.session.add(venue)	
     db.session.commit()
   except:
@@ -512,7 +403,7 @@ def delete_artist(artist_id):
     db.session.rollback()
     print(sys.exc_info())
   finally: 
-    db.session.close()
+    db.session.close()  
 
   if error:
     # on unsuccessful deletion flash an error instead
@@ -708,6 +599,7 @@ def edit_artist(artist_id):
   for genre in artist.genres:
     genres.append(genre.name)
   
+
   dbData = {
     "id": artist.id,
     "name": artist.name,
@@ -721,6 +613,7 @@ def edit_artist(artist_id):
     "seeking_description": artist.seeking_description,
     "image_link": artist.image_link, 
   }
+  # return dbData;
 
   # leaving mock data for reference 
   mockArtist={
@@ -743,38 +636,43 @@ def edit_artist(artist_id):
 def edit_artist_submission(artist_id):
   # take values from the form submitted, and update existing
   # artist record with ID <artist_id> using the new attributes
-
+  
   # if artist doesn't exist retun page 404
   artist = Artist.query.get(artist_id)
   try:
     artist.name
   except:
     abort(404)
+
+  data = request.form
+  
+  # validate input data
+  form = ArtistForm()
+
+  if not form.validate_on_submit():
+    flash('invalid input fields')
+    return redirect(url_for('index'))
+  
     
   error = False
   try:
-    data = request.form
-
-    # updating data
-    # if requset data doesn't have a field then keep the old value 
-    artist.name =  data['name'] if 'name' in data.keys() else artist.name
-    artist.city = data['city'] if 'city' in data.keys() else artist.city
-    artist.state = data['state'] if 'state' in data.keys() else artist.state
-    artist.phone = data['phone'] if 'phone' in data.keys() else artist.phone
-    artist.facebook_link = data['facebook_link'] if 'facebook_link' in data.keys() else artist.facebook_link
-    # data not implemented in forntend 
-    # updating them incase of future addition of them if frontend
-    artist.image_link = data['image_link'] if 'image_link' in data.keys() else artist.image_link 
-    artist.website = data['website'] if 'website' in data.keys() else artist.website 
-    artist.seeking_venue = data['seeking_venue'] if 'seeking_venue' in data.keys() else artist.seeking_venue 
-    artist.seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else artist.seeking_description 
+    # updating data 
+    artist.name =  data['name'] 
+    artist.city = data['city'] 
+    artist.state = data['state'] 
+    artist.phone = data['phone'] 
+    artist.facebook_link = data['facebook_link'] 
+    artist.image_link = data['image_link'] 
+    artist.website = data['website']
+    artist.seeking_venue = True if 'seeking_venue' in data.keys() else False 
+    artist.seeking_description = data['seeking_description'] 
  
     # update genre
-    #   we will need to remove the artist genres first
-    #   so we need to check if the request data has genres 
-    if 'genres' in data.keys():
-      genre = ArtistGenre(name = data['genres'])
-      artist.genres = [genre]
+    # first empty the artist genres
+    artist.genres = []
+    for genre_name in form.genres.data:
+      genre = ArtistGenre(name = genre_name)
+      artist.genres.append(genre)
 
     db.session.add(artist)
     db.session.commit()
@@ -852,32 +750,39 @@ def edit_venue_submission(venue_id):
     venue.name
   except:
     abort(404)
+
+  data = request.form
+
+   # validate input data
+  form = VenueForm()
+
+  if not form.validate_on_submit():
+    flash('invalid input fields')
+    return redirect(url_for('index'))
+
     
   error = False
   try:
-    data = request.form
     # updating data
-    # if requset data doesn't have a field then keep the old value 
-    venue.name =  data['name'] if 'name' in data.keys() else venue.name
-    venue.city = data['city'] if 'city' in data.keys() else venue.city
-    venue.state = data['state'] if 'state' in data.keys() else venue.state
-    venue.address = data['address'] if 'address' in data.keys() else venue.address
-    venue.phone = data['phone'] if 'phone' in data.keys() else venue.phone
-    venue.facebook_link = data['facebook_link'] if 'facebook_link' in data.keys() else venue.facebook_link
-    # data not implemented in forntend 
-    # updating them incase of future addition of them if frontend
-    venue.image_link = data['image_link'] if 'image_link' in data.keys() else venue.image_link 
-    venue.website = data['website'] if 'website' in data.keys() else venue.website 
-    venue.seeking_talent = data['seeking_talent'] if 'seeking_talent' in data.keys() else venue.seeking_talent 
-    venue.seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else venue.seeking_description 
+    
+    venue.name =  data['name']
+    venue.city = data['city']
+    venue.state = data['state']
+    venue.address = data['address']
+    venue.phone = data['phone']
+    venue.facebook_link = data['facebook_link']
+    venue.image_link = data['image_link']
+    venue.website = data['website']
+    venue.seeking_talent = True if 'seeking_talent' in data.keys() else False 
+    venue.seeking_description = data['seeking_description']
  
     # update genre
-    #   we will need to remove the venue genres first
-    #   so we need to check if the request data has genres 
-    if 'genres' in data.keys():
-      genre = VenueGenre(name = data['genres'])
-      venue.genres = [genre]
-
+    # first empty the venue genres
+    venue.genres = []
+    for genre_name in form.genres.data:
+      genre = VenueGenre(name = genre_name)
+      venue.genres.append(genre)
+  
     db.session.add(venue)
     db.session.commit()
   except:
@@ -905,24 +810,31 @@ def create_artist_form():
 
 @app.route('/artists/create', methods=['POST'])
 def create_artist_submission():
+  data = request.form
+  form = ArtistForm()
+
+  # validate input data
+  if not form.validate_on_submit():
+    flash('invalid input fields')
+    return redirect(url_for('index'))
+
   error = False
   try:
-    data = request.form
-    # adding all the data fields even though its not provided in the forntend
-    # incase data added in the future
     artist = Artist(
       name = data['name'],
       city = data['city'],
       state = data['state'],
       phone = data['phone'],
       facebook_link = data['facebook_link'],
-      image_link = data['image_link'] if 'image_link' in data.keys() else '',
-      website = data['website'] if 'website' in data.keys() else '',
-      seeking_venue = data['seeking_venue'] if 'seeking_venue' in data.keys() else False,
-      seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else ''
+      image_link = data['image_link'],
+      website = data['website'],
+      seeking_venue = True if 'seeking_venue' in data.keys() else False,
+      seeking_description = data['seeking_description']
     )
-    genre = ArtistGenre(name = data['genres'])
-    artist.genres = [genre]
+    # insert multiple genres
+    for genre_name in form.genres.data:
+      genre = ArtistGenre(name = genre_name)
+      artist.genres.append(genre)
     db.session.add(artist)	
     db.session.commit()
   except:
@@ -1012,8 +924,14 @@ def create_shows():
 @app.route('/shows/create', methods=['POST'])
 def create_show_submission():
   # called to create new shows in the db, upon submitting new show listing form
-  
   # insert form data as a new Show record in the db, instead
+
+  form = ShowForm()
+  # validate input data
+  if not form.validate_on_submit():
+    flash('invalid input fields')
+    return redirect(url_for('index'))
+
   error = False
   try:
     data = request.form
