@@ -5,7 +5,7 @@
 import json
 import dateutil.parser
 import babel
-from flask import Flask, render_template, request, Response, flash, redirect, url_for, jsonify
+from flask import Flask, render_template, request, Response, flash, redirect, url_for, abort, jsonify
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import load_only
@@ -126,6 +126,62 @@ def get_num_upcoming_shows(shows):
       num_upcoming_shows += 1
   return num_upcoming_shows
 
+# get the number of past shows 
+# shows: list of shows
+# return: integer of number of past shows
+def get_num_past_shows(shows):
+  num_past_shows = 0
+  for show in shows:
+    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
+    now = datetime.now()
+    # checking if start_time is in the past or not
+    if start_time < now:
+      num_past_shows += 1
+  return num_past_shows
+
+# get the upcoming shows 
+# shows: list of shows
+# return: list of upcoming shows
+def get_upcoming_shows(shows):
+  upcoming_shows = []
+  for show in shows:
+    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
+    now = datetime.now()
+    # checking if start_time is in the future or not
+    if start_time > now:
+      upcoming_shows.append({
+        "show_id": show.id,
+        "venue_id": show.venue.id,
+        "venue_name": show.venue.name,
+        "venue_image_link": show.venue.image_link,
+        "artist_id": show.artist.id,
+        "artist_name": show.artist.name,
+        "artist_image_link": show.artist.image_link,
+        "start_time": show.start_time
+      })
+  return upcoming_shows
+
+# get the past shows 
+# shows: list of shows
+# return: list of past shows
+def get_past_shows(shows):
+  past_shows = []
+  for show in shows:
+    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
+    now = datetime.now()
+    # checking if start_time is in the past or not
+    if start_time < now:
+      past_shows.append({
+        "show_id": show.id,
+        "venue_id": show.venue.id,
+        "venue_name": show.venue.name,
+        "venue_image_link": show.venue.image_link,
+        "artist_id": show.artist.id,
+        "artist_name": show.artist.name,
+        "artist_image_link": show.artist.image_link,
+        "start_time": show.start_time
+      })
+  return past_shows
 #----------------------------------------------------------------------------#
 # Filters.
 #----------------------------------------------------------------------------#
@@ -234,7 +290,39 @@ def search_venues():
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
   # shows the venue page with the given venue_id
-  # TODO: replace with real venue data from the venues table, using venue_id
+  # replace with real venue data from the venues table, using venue_id
+  # if venue doesn't exist retun page 404
+  venue = Venue.query.get(venue_id)
+  try:
+    venue.name
+  except:
+    abort(404)
+  
+  # prepare genres
+  genres = []
+  for genre in venue.genres:
+    genres.append(genre.name)
+  
+  dbData = {
+    "id": venue.id,
+    "name": venue.name,
+    "genres": genres,
+    "address": venue.address,
+    "city": venue.city,
+    "state": venue.state,
+    "phone": venue.phone,
+    "website": venue.website,
+    "facebook_link": venue.facebook_link,
+    "seeking_talent": venue.seeking_talent,
+    "seeking_description": venue.seeking_description,
+    "image_link": venue.image_link,
+    "past_shows": get_past_shows(venue.shows),
+    "upcoming_shows": get_upcoming_shows(venue.shows),
+    "past_shows_count": get_num_past_shows(venue.shows),
+    "upcoming_shows_count": get_num_upcoming_shows(venue.shows) 
+  }
+
+  # leaving mock data for reference 
   data1={
     "id": 1,
     "name": "The Musical Hop",
@@ -312,8 +400,11 @@ def show_venue(venue_id):
     "past_shows_count": 1,
     "upcoming_shows_count": 1,
   }
-  data = list(filter(lambda d: d['id'] == venue_id, [data1, data2, data3]))[0]
-  return render_template('pages/show_venue.html', venue=data)
+
+  # data = list(filter(lambda d: d['id'] == venue_id, [data1, data2, data3]))[0]
+  
+  #using real database data
+  return render_template('pages/show_venue.html', venue=dbData)
 
 #  Create Venue
 #  ----------------------------------------------------------------
@@ -354,7 +445,7 @@ def create_venue_submission():
   finally:
     db.session.close()
   if error:
-    # TODO: on unsuccessful db insert, flash an error instead.
+    #  on unsuccessful db insert, flash an error instead.
     flash('An error occurred. Venue ' + data['name'] + ' could not be listed.')
   else:
     # on successful db insert, flash success
@@ -429,8 +520,39 @@ def search_artists():
 
 @app.route('/artists/<int:artist_id>')
 def show_artist(artist_id):
-  # shows the venue page with the given venue_id
-  # TODO: replace with real venue data from the venues table, using venue_id
+  # shows the artist page with the given artist_id
+  #  replace with real artist data from the artists table, using artist_id
+  # if artist doesn't exist retun page 404
+  artist = Artist.query.get(artist_id)
+  try:
+    artist.name
+  except:
+    abort(404)
+  
+  # prepare genres
+  genres = []
+  for genre in artist.genres:
+    genres.append(genre.name)
+  
+  dbData = {
+    "id": artist.id,
+    "name": artist.name,
+    "genres": genres,
+    "city": artist.city,
+    "state": artist.state,
+    "phone": artist.phone,
+    "website": artist.website,
+    "facebook_link": artist.facebook_link,
+    "seeking_venue": artist.seeking_venue,
+    "seeking_description": artist.seeking_description,
+    "image_link": artist.image_link,
+    "past_shows": get_past_shows(artist.shows),
+    "upcoming_shows": get_upcoming_shows(artist.shows),
+    "past_shows_count": get_num_past_shows(artist.shows),
+    "upcoming_shows_count": get_num_upcoming_shows(artist.shows) 
+  }
+
+  # leaving mock data for reference 
   data1={
     "id": 4,
     "name": "Guns N Petals",
@@ -502,8 +624,10 @@ def show_artist(artist_id):
     "past_shows_count": 0,
     "upcoming_shows_count": 3,
   }
-  data = list(filter(lambda d: d['id'] == artist_id, [data1, data2, data3]))[0]
-  return render_template('pages/show_artist.html', artist=data)
+  # data = list(filter(lambda d: d['id'] == artist_id, [data1, data2, data3]))[0]
+
+  # using real database data
+  return render_template('pages/show_artist.html', artist=dbData)
 
 #  Update
 #  ----------------------------------------------------------------
@@ -596,7 +720,7 @@ def create_artist_submission():
   finally:
     db.session.close()
   if error:
-    # TODO: on unsuccessful db insert, flash an error instead.
+    # on unsuccessful db insert, flash an error instead.
     flash('An error occurred. Artist ' + data['name'] + ' could not be listed.')
   else:
     # on successful db insert, flash success
@@ -701,7 +825,7 @@ def create_show_submission():
   finally:
     db.session.close()
   if error:
-    # TODO: on unsuccessful db insert, flash an error instead.
+    # on unsuccessful db insert, flash an error instead.
     flash('An error occurred. Show could not be listed.')
   else:
     # on successful db insert, flash success
