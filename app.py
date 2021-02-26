@@ -8,12 +8,14 @@ import babel
 from flask import Flask, render_template, request, Response, flash, redirect, url_for, jsonify
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import load_only
 from flask_migrate import Migrate
 import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
 from forms import *
 import sys
+from datetime import datetime
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -23,7 +25,8 @@ moment = Moment(app)
 app.config.from_object('config')
 db = SQLAlchemy(app)
 
-# TODO: connect to a local postgresql database
+# connect to a local postgresql database
+# migration connection
 migrate = Migrate(app, db)
 
 #----------------------------------------------------------------------------#
@@ -40,7 +43,7 @@ class Venue(db.Model):
     phone = db.Column(db.String(120), nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
-    # TODO: implement any missing fields, as a database migration using Flask-Migrate
+    #  implement any missing fields, as a database migration using Flask-Migrate
     website = db.Column(db.String(120)) 
     seeking_talent = db.Column(db.Boolean, default=False)
     seeking_description = db.Column(db.String(500))
@@ -63,7 +66,7 @@ class Artist(db.Model):
     phone = db.Column(db.String(120), nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
-    # TODO: implement any missing fields, as a database migration using Flask-Migrate
+    #  implement any missing fields, as a database migration using Flask-Migrate
     website = db.Column(db.String(120))
     seeking_venue = db.Column(db.Boolean, default=False)
     seeking_description = db.Column(db.String(500))
@@ -75,7 +78,6 @@ class Artist(db.Model):
     def __repr__(self):
       return f'<{self.id}, {self.name}>'
 
-# TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
 
 # creating genres tables to avoid multi values in a single field 
 # and to achieve achieve 3NF 
@@ -108,6 +110,23 @@ class Show(db.Model):
 
 
 #----------------------------------------------------------------------------#
+# helper functions.
+#----------------------------------------------------------------------------#
+
+# get the number of upcoming shows 
+# shows: list of shows
+# return: integer of number of upcoming shows
+def get_num_upcoming_shows(shows):
+  num_upcoming_shows = 0
+  for show in shows:
+    start_time = datetime.strptime(show.start_time, '%Y-%m-%d %H:%M:%S')
+    now = datetime.now()
+    # checking if start_time is in the future or not
+    if start_time > now:
+      num_upcoming_shows += 1
+  return num_upcoming_shows
+
+#----------------------------------------------------------------------------#
 # Filters.
 #----------------------------------------------------------------------------#
 
@@ -135,9 +154,32 @@ def index():
 
 @app.route('/venues')
 def venues():
-  # TODO: replace with real venues data.
-  #       num_shows should be aggregated based on number of upcoming shows per venue.
-  data=[{
+  #  replace with real venues data.
+  # getting cities and states 
+  citiesAndStates = Venue.query.with_entities(Venue.city, Venue.state).group_by(Venue.city, Venue.state).all()
+  dbData = []
+
+  for cityandState in citiesAndStates:
+    # grouping venues based on their city and state
+    venues = Venue.query.filter(Venue.city==cityandState[0], Venue.state==cityandState[1]).all()
+    # addign the num_upcoming_shows feild
+    # venueList because venue obj doesn't support item assignment
+    venueList = []
+    for index, venue in enumerate(venues):
+      venueList.append({
+        "id": venue.id,
+        "name": venue.name,
+      })
+      shows = venue.shows     
+      venueList[index]['num_upcoming_shows'] = get_num_upcoming_shows(shows)
+    dbData.append({
+      "city": cityandState[0],
+      "state": cityandState[1],
+      "venues": venueList
+    })
+  
+  # leaving mock data just for reference 
+  mockData=[{
     "city": "San Francisco",
     "state": "CA",
     "venues": [{
@@ -158,14 +200,28 @@ def venues():
       "num_upcoming_shows": 0,
     }]
   }]
-  return render_template('pages/venues.html', areas=data);
+  # using real database data in the vue
+  return render_template('pages/venues.html', areas=dbData);
 
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
-  # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
-  # seach for Hop should return "The Musical Hop".
-  # search for "Music" should return "The Musical Hop" and "Park Square Live Music & Coffee"
-  response={
+  # implement search on venues with partial string search. Ensure it is case-insensitive.
+  search_term = search_term=request.form.get('search_term', '')
+  venues = Venue.query.filter(Venue.name.ilike(f'%{search_term}%')).all()
+  dbResponse = {
+    "count": len(venues)
+  }
+  dbData = []
+  for venue in venues:
+    dbData.append({
+      "id": venue.id,
+      "name": venue.name,
+      "num_upcoming_shows": get_num_upcoming_shows(venue.shows)
+    })
+  dbResponse['data'] = dbData
+  
+  # leaving mock response for reference
+  mockResponse={
     "count": 1,
     "data": [{
       "id": 2,
@@ -173,7 +229,7 @@ def search_venues():
       "num_upcoming_shows": 0,
     }]
   }
-  return render_template('pages/search_venues.html', results=response, search_term=request.form.get('search_term', ''))
+  return render_template('pages/search_venues.html', results=dbResponse, search_term=search_term)
 
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
@@ -269,17 +325,23 @@ def create_venue_form():
 
 @app.route('/venues/create', methods=['POST'])
 def create_venue_submission():
-  # TODO: insert form data as a new Venue record in the db, instead
+  #  insert form data as a new Venue record in the db, instead
   error = False
   try:
     data = request.form
+    # adding all the data fields even though its not provided in the forntend
+    # incase data added in the future
     venue = Venue(
       name = data['name'],
       city = data['city'],
       state = data['state'],
       address = data['address'],
       phone = data['phone'],
-      facebook_link = data['facebook_link']
+      facebook_link = data['facebook_link'],
+      image_link = data['image_link'] if 'image_link' in data.keys() else '',
+      website = data['website'] if 'website' in data.keys() else '',
+      seeking_talent = data['seeking_talent'] if 'seeking_talent' in data.keys() else False,
+      seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else ''
     )
     genre = VenueGenre(name = data['genres'])
     venue.genres = [genre]
@@ -314,7 +376,16 @@ def delete_venue(venue_id):
 @app.route('/artists')
 def artists():
   # TODO: replace with real data returned from querying the database
-  data=[{
+  artists = Artist.query.with_entities(Artist.id, Artist.name).all();
+  dbData = []
+  for artist in artists:
+    dbData.append({
+      "id": artist[0],
+      "name": artist[1]
+    })
+  
+  # leaving mock data for reference 
+  mockData=[{
     "id": 4,
     "name": "Guns N Petals",
   }, {
@@ -324,14 +395,29 @@ def artists():
     "id": 6,
     "name": "The Wild Sax Band",
   }]
-  return render_template('pages/artists.html', artists=data)
+  return render_template('pages/artists.html', artists=dbData)
 
 @app.route('/artists/search', methods=['POST'])
 def search_artists():
-  # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
+  # implement search on artists with partial string search. Ensure it is case-insensitive.
   # seach for "A" should return "Guns N Petals", "Matt Quevado", and "The Wild Sax Band".
   # search for "band" should return "The Wild Sax Band".
-  response={
+  search_term = search_term=request.form.get('search_term', '')
+  artists = Artist.query.filter(Artist.name.ilike(f'%{search_term}%')).all()
+  dbResponse = {
+    "count": len(artists)
+  }
+  dbData = []
+  for artist in artists:
+    dbData.append({
+      "id": artist.id,
+      "name": artist.name,
+      "num_upcoming_shows": get_num_upcoming_shows(artist.shows)
+    })
+  dbResponse['data'] = dbData
+
+  # leaving mock response for reference
+  mockResponse={
     "count": 1,
     "data": [{
       "id": 4,
@@ -339,7 +425,7 @@ def search_artists():
       "num_upcoming_shows": 0,
     }]
   }
-  return render_template('pages/search_artists.html', results=response, search_term=request.form.get('search_term', ''))
+  return render_template('pages/search_artists.html', results=dbResponse, search_term=search_term)
 
 @app.route('/artists/<int:artist_id>')
 def show_artist(artist_id):
@@ -486,12 +572,18 @@ def create_artist_submission():
   error = False
   try:
     data = request.form
+    # adding all the data fields even though its not provided in the forntend
+    # incase data added in the future
     artist = Artist(
       name = data['name'],
       city = data['city'],
       state = data['state'],
       phone = data['phone'],
-      facebook_link = data['facebook_link']
+      facebook_link = data['facebook_link'],
+      image_link = data['image_link'] if 'image_link' in data.keys() else '',
+      website = data['website'] if 'website' in data.keys() else '',
+      seeking_venue = data['seeking_venue'] if 'seeking_venue' in data.keys() else False,
+      seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else ''
     )
     genre = ArtistGenre(name = data['genres'])
     artist.genres = [genre]
@@ -518,9 +610,24 @@ def create_artist_submission():
 @app.route('/shows')
 def shows():
   # displays list of shows at /shows
-  # TODO: replace with real venues data.
-  #       num_shows should be aggregated based on number of upcoming shows per venue.
-  data=[{
+  
+  # getting all the shows 
+  # I was thinking getting only the upcomming shows 
+  # but in the mock data there were shows in the past (2019)
+  shows = Show.query.join('venue').join('artist').all()
+  dbData = []
+  for show in shows:
+    dbData.append({
+      "venue_id": show.venue_id,
+      "venue_name": show.venue.name,
+      "artist_id": show.artist_id,
+      "artist_name": show.artist.name,
+      "artist_image_link": show.artist.image_link,
+      "start_time": show.start_time
+    })
+
+# leaving muck data for reference
+  mockData=[{
     "venue_id": 1,
     "venue_name": "The Musical Hop",
     "artist_id": 4,
@@ -556,7 +663,9 @@ def shows():
     "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
     "start_time": "2035-04-15T20:00:00.000Z"
   }]
-  return render_template('pages/shows.html', shows=data)
+
+  # using real db data
+  return render_template('pages/shows.html', shows=dbData)
 
 @app.route('/shows/create')
 def create_shows():
@@ -568,16 +677,20 @@ def create_shows():
 def create_show_submission():
   # called to create new shows in the db, upon submitting new show listing form
   
-  # TODO: insert form data as a new Show record in the db, instead
+  # insert form data as a new Show record in the db, instead
   error = False
   try:
     data = request.form
+    # this line to ensure that the time field is in a correct form
+    # or else throw an error
+    datetime.strptime(data['start_time'], '%Y-%m-%d %H:%M:%S')
+
     venue = Venue.query.get(data['venue_id'])
     artist = Artist.query.get(data['artist_id'])
     show = Show(
       venue_id = venue.id,
       artist_id = artist.id,
-      start_time = format_datetime(data['start_time'])
+      start_time = data['start_time']
     )
     db.session.add(show)	
     db.session.commit()
