@@ -5,6 +5,7 @@
 	<div class="col-sm-6">
 		<h1 class="monospace">
 			{{ venue.name }}
+			<button id="delete-venue" data-venue-id="{{ venue.id }}" class="btn btn-danger">Delete Venue</button>
 		</h1>
 		<p class="subtitle">
 			ID: {{ venue.id }}
@@ -74,6 +75,17 @@
 		{% endfor %}
 	</div>
 </section>
+
+<script>
+	btn = document.getElementById('delete-venue')
+	btn.addEventListener('click', () => {
+		venueId = btn.dataset.venueId 
+		fetch(`/venues/${venueId}`, {
+			method: 'DELETE',
+		}).then(res => location.assign('/'))
+		.catch(res => console.log('error'))
+	})
+</script>
 
 {% endblock %}
 

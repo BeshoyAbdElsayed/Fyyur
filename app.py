@@ -455,18 +455,80 @@ def create_venue_submission():
 
 @app.route('/venues/<venue_id>', methods=['DELETE'])
 def delete_venue(venue_id):
-  # TODO: Complete this endpoint for taking a venue_id, and using
+  # Complete this endpoint for taking a venue_id, and using
   # SQLAlchemy ORM to delete a record. Handle cases where the session commit could fail.
 
+  # if artist doesn't exist retun page 404
+  venue = Venue.query.get(venue_id)
+  venue_name = venue.name
+  try:
+    venue.name
+  except:
+    abort(404)
+
+  error = False
+  try:
+    db.session.delete(venue)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally: 
+    db.session.close()
+
+  if error:
+    # on unsuccessful deletion flash an error instead
+    flash(f'Venue {venue_name} deletion failed')
+  else:
+    flash(f'Venue {venue_name} was deleted successfully!')
+
+  return redirect(url_for('index'))
+  
   # BONUS CHALLENGE: Implement a button to delete a Venue on a Venue Page, have it so that
   # clicking that button delete it from the db then redirect the user to the homepage
-  return None
+  #------- Done it :D
+
+  # delete artist
+@app.route('/artists/<artist_id>', methods=['DELETE'])
+def delete_artist(artist_id):
+  # Complete this endpoint for taking a artist_id, and using
+  # SQLAlchemy ORM to delete a record. Handle cases where the session commit could fail.
+
+  # if artist doesn't exist retun page 404
+  artist = Artist.query.get(artist_id)
+  artist_name = artist.name
+  try:
+    artist.name
+  except:
+    abort(404)
+
+  error = False
+  try:
+    db.session.delete(artist)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally: 
+    db.session.close()
+
+  if error:
+    # on unsuccessful deletion flash an error instead
+    flash(f'Artist {artist_name} deletion failed')
+  else:
+    flash(f'Artist {artist_name} was deleted successfully!')
+
+  return redirect(url_for('index'))
+  
+
 
 #  Artists
 #  ----------------------------------------------------------------
 @app.route('/artists')
 def artists():
-  # TODO: replace with real data returned from querying the database
+  # replace with real data returned from querying the database
   artists = Artist.query.with_entities(Artist.id, Artist.name).all();
   dbData = []
   for artist in artists:
@@ -634,7 +696,34 @@ def show_artist(artist_id):
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
 def edit_artist(artist_id):
   form = ArtistForm()
-  artist={
+  # if artist doesn't exist retun page 404
+  artist = Artist.query.get(artist_id)
+  try:
+    artist.name
+  except:
+    abort(404)
+  
+  # prepare genres
+  genres = []
+  for genre in artist.genres:
+    genres.append(genre.name)
+  
+  dbData = {
+    "id": artist.id,
+    "name": artist.name,
+    "genres": genres,
+    "city": artist.city,
+    "state": artist.state,
+    "phone": artist.phone,
+    "website": artist.website,
+    "facebook_link": artist.facebook_link,
+    "seeking_venue": artist.seeking_venue,
+    "seeking_description": artist.seeking_description,
+    "image_link": artist.image_link, 
+  }
+
+  # leaving mock data for reference 
+  mockArtist={
     "id": 4,
     "name": "Guns N Petals",
     "genres": ["Rock n Roll"],
@@ -647,20 +736,95 @@ def edit_artist(artist_id):
     "seeking_description": "Looking for shows to perform at in the San Francisco Bay Area!",
     "image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80"
   }
-  # TODO: populate form with fields from artist with ID <artist_id>
-  return render_template('forms/edit_artist.html', form=form, artist=artist)
+  # populate form with fields from artist with ID <artist_id>
+  return render_template('forms/edit_artist.html', form=form, artist=dbData)
 
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
 def edit_artist_submission(artist_id):
-  # TODO: take values from the form submitted, and update existing
+  # take values from the form submitted, and update existing
   # artist record with ID <artist_id> using the new attributes
+
+  # if artist doesn't exist retun page 404
+  artist = Artist.query.get(artist_id)
+  try:
+    artist.name
+  except:
+    abort(404)
+    
+  error = False
+  try:
+    data = request.form
+
+    # updating data
+    # if requset data doesn't have a field then keep the old value 
+    artist.name =  data['name'] if 'name' in data.keys() else artist.name
+    artist.city = data['city'] if 'city' in data.keys() else artist.city
+    artist.state = data['state'] if 'state' in data.keys() else artist.state
+    artist.phone = data['phone'] if 'phone' in data.keys() else artist.phone
+    artist.facebook_link = data['facebook_link'] if 'facebook_link' in data.keys() else artist.facebook_link
+    # data not implemented in forntend 
+    # updating them incase of future addition of them if frontend
+    artist.image_link = data['image_link'] if 'image_link' in data.keys() else artist.image_link 
+    artist.website = data['website'] if 'website' in data.keys() else artist.website 
+    artist.seeking_venue = data['seeking_venue'] if 'seeking_venue' in data.keys() else artist.seeking_venue 
+    artist.seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else artist.seeking_description 
+ 
+    # update genre
+    #   we will need to remove the artist genres first
+    #   so we need to check if the request data has genres 
+    if 'genres' in data.keys():
+      genre = ArtistGenre(name = data['genres'])
+      artist.genres = [genre]
+
+    db.session.add(artist)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally: 
+    db.session.close()
+
+  if error:
+    # on unsuccessful db update flask an error instead
+    flash('update  failed')
+  else:
+    flash('update was successful!')
 
   return redirect(url_for('show_artist', artist_id=artist_id))
 
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
   form = VenueForm()
-  venue={
+  # if venue doesn't exist retun page 404
+  venue = Venue.query.get(venue_id)
+  try:
+    venue.name
+  except:
+    abort(404)
+  
+  # prepare genres
+  genres = []
+  for genre in venue.genres:
+    genres.append(genre.name)
+  
+  dbData = {
+    "id": venue.id,
+    "name": venue.name,
+    "genres": genres,
+    "address": venue.address,
+    "city": venue.city,
+    "state": venue.state,
+    "phone": venue.phone,
+    "website": venue.website,
+    "facebook_link": venue.facebook_link,
+    "seeking_talent": venue.seeking_talent,
+    "seeking_description": venue.seeking_description,
+    "image_link": venue.image_link,
+  }
+
+  # leaving mock data for reference
+  mockVenue={
     "id": 1,
     "name": "The Musical Hop",
     "genres": ["Jazz", "Reggae", "Swing", "Classical", "Folk"],
@@ -674,13 +838,61 @@ def edit_venue(venue_id):
     "seeking_description": "We are on the lookout for a local artist to play every two weeks. Please call us.",
     "image_link": "https://images.unsplash.com/photo-1543900694-133f37abaaa5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=400&q=60"
   }
-  # TODO: populate form with values from venue with ID <venue_id>
-  return render_template('forms/edit_venue.html', form=form, venue=venue)
+  #  populate form with values from venue with ID <venue_id>
+  return render_template('forms/edit_venue.html', form=form, venue=dbData)
 
 @app.route('/venues/<int:venue_id>/edit', methods=['POST'])
 def edit_venue_submission(venue_id):
-  # TODO: take values from the form submitted, and update existing
+  # take values from the form submitted, and update existing
   # venue record with ID <venue_id> using the new attributes
+
+  # if artist doesn't exist retun page 404
+  venue = Venue.query.get(venue_id)
+  try:
+    venue.name
+  except:
+    abort(404)
+    
+  error = False
+  try:
+    data = request.form
+    # updating data
+    # if requset data doesn't have a field then keep the old value 
+    venue.name =  data['name'] if 'name' in data.keys() else venue.name
+    venue.city = data['city'] if 'city' in data.keys() else venue.city
+    venue.state = data['state'] if 'state' in data.keys() else venue.state
+    venue.address = data['address'] if 'address' in data.keys() else venue.address
+    venue.phone = data['phone'] if 'phone' in data.keys() else venue.phone
+    venue.facebook_link = data['facebook_link'] if 'facebook_link' in data.keys() else venue.facebook_link
+    # data not implemented in forntend 
+    # updating them incase of future addition of them if frontend
+    venue.image_link = data['image_link'] if 'image_link' in data.keys() else venue.image_link 
+    venue.website = data['website'] if 'website' in data.keys() else venue.website 
+    venue.seeking_talent = data['seeking_talent'] if 'seeking_talent' in data.keys() else venue.seeking_talent 
+    venue.seeking_description = data['seeking_description'] if 'seeking_description' in data.keys() else venue.seeking_description 
+ 
+    # update genre
+    #   we will need to remove the venue genres first
+    #   so we need to check if the request data has genres 
+    if 'genres' in data.keys():
+      genre = VenueGenre(name = data['genres'])
+      venue.genres = [genre]
+
+    db.session.add(venue)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally: 
+    db.session.close()
+
+  if error:
+    # on unsuccessful db update flask an error instead
+    flash('update failed')
+  else:
+    flash('update was successful!')
+
   return redirect(url_for('show_venue', venue_id=venue_id))
 
 #  Create Artist
